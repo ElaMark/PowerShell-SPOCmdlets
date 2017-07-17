@@ -379,8 +379,12 @@ namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
                     }
                     if (sourceTerm != null)
                     {
-                        _cmdlet.WriteVerbose(string.Format("Creating Reference Term: {0}", termName)); 
-                        term = parentTermSetItem.ReuseTerm(sourceTerm, false);
+                        _cmdlet.WriteVerbose(string.Format("Creating Reference Term: {0}", termName));
+
+                        if (termElement.GetAttribute("IsPinnedRoot") != "False")
+                            term = parentTermSetItem.ReuseTermWithPinning(sourceTerm);
+                        //else
+                        //    term = parentTermSetItem.ReuseTerm(sourceTerm, false);
                         _ctx.ExecuteQuery();
                     }
                     else
@@ -389,7 +393,7 @@ namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
                 if (term == null || term.ServerObjectIsNull == null || term.ServerObjectIsNull.Value)
                 {
                     _cmdlet.WriteVerbose(string.Format("Creating Term: {0}", termName));
-                    
+
                     int lcid = _workingLanguage;
                     Guid id = Guid.NewGuid();
                     if (!string.IsNullOrEmpty(termElement.GetAttribute("Id")))
@@ -411,78 +415,83 @@ namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
                 }
             }
 
-            XmlNodeList descriptionNodes = termElement.SelectNodes("./Descriptions/Description");
-            if (descriptionNodes != null && descriptionNodes.Count > 0)
+            if (termElement.GetAttribute("IsPinned") != "True")
             {
-                foreach (XmlElement descriptionElement in descriptionNodes)
+                XmlNodeList descriptionNodes = termElement.SelectNodes("./Descriptions/Description");
+                if (descriptionNodes != null && descriptionNodes.Count > 0)
                 {
-                    term.SetDescription(descriptionElement.GetAttribute("Value"),
-                        int.Parse(descriptionElement.GetAttribute("Language")));
-                }
-                _ctx.ExecuteQuery();
-            }
-
-            XmlNodeList propertyNodes = termElement.SelectNodes("./CustomProperties/CustomProperty");
-            if (propertyNodes != null && propertyNodes.Count > 0)
-            {
-                foreach (XmlElement propertyElement in propertyNodes)
-                {
-                    term.SetCustomProperty(propertyElement.GetAttribute("Name"), 
-                        propertyElement.GetAttribute("Value"));
-                }
-                _ctx.ExecuteQuery();
-            }
-
-            XmlNodeList localPropertyNodes = termElement.SelectNodes("./LocalCustomProperties/LocalCustomProperty");
-            if (localPropertyNodes != null && localPropertyNodes.Count > 0)
-            {
-                foreach (XmlElement propertyElement in localPropertyNodes)
-                {
-                    term.SetLocalCustomProperty(propertyElement.GetAttribute("Name"),
-                        propertyElement.GetAttribute("Value"));
-                }
-                _ctx.ExecuteQuery();
-            }
-
-            XmlNodeList labelNodes = termElement.SelectNodes("./Labels/Label");
-            if (labelNodes != null && labelNodes.Count > 0)
-            {
-                foreach (XmlElement labelElement in labelNodes)
-                {
-                    string labelValue = labelElement.GetAttribute("Value");
-                    int lcid = int.Parse(labelElement.GetAttribute("Language"));
-                    bool isDefault = bool.Parse(labelElement.GetAttribute("IsDefaultForLanguage"));
-                    var labels = term.GetAllLabels(lcid);
-                    parentTermSetItem.Context.Load(labels);
-                    parentTermSetItem.Context.ExecuteQuery();
-
-                    Label label = labels.FirstOrDefault(currentLabel => currentLabel.Value == labelValue);
-                    if (label == null || label.ServerObjectIsNull.Value)
+                    foreach (XmlElement descriptionElement in descriptionNodes)
                     {
-                        term.CreateLabel(labelValue, lcid, isDefault);
-                        parentTermSetItem.Context.ExecuteQuery();
+                        term.SetDescription(descriptionElement.GetAttribute("Value"),
+                            int.Parse(descriptionElement.GetAttribute("Language")));
                     }
-                    else
+                    _ctx.ExecuteQuery();
+                }
+
+                XmlNodeList propertyNodes = termElement.SelectNodes("./CustomProperties/CustomProperty");
+                if (propertyNodes != null && propertyNodes.Count > 0)
+                {
+                    foreach (XmlElement propertyElement in propertyNodes)
                     {
-                        if (isDefault && !label.IsDefaultForLanguage)
+                        term.SetCustomProperty(propertyElement.GetAttribute("Name"),
+                            propertyElement.GetAttribute("Value"));
+                    }
+                    _ctx.ExecuteQuery();
+                }
+
+                XmlNodeList localPropertyNodes = termElement.SelectNodes("./LocalCustomProperties/LocalCustomProperty");
+                if (localPropertyNodes != null && localPropertyNodes.Count > 0)
+                {
+                    foreach (XmlElement propertyElement in localPropertyNodes)
+                    {
+                        term.SetLocalCustomProperty(propertyElement.GetAttribute("Name"),
+                            propertyElement.GetAttribute("Value"));
+                    }
+                    _ctx.ExecuteQuery();
+                }
+
+                XmlNodeList labelNodes = termElement.SelectNodes("./Labels/Label");
+                if (labelNodes != null && labelNodes.Count > 0)
+                {
+                    foreach (XmlElement labelElement in labelNodes)
+                    {
+                        string labelValue = labelElement.GetAttribute("Value");
+                        int lcid = int.Parse(labelElement.GetAttribute("Language"));
+                        bool isDefault = bool.Parse(labelElement.GetAttribute("IsDefaultForLanguage"));
+                        var labels = term.GetAllLabels(lcid);
+                        parentTermSetItem.Context.Load(labels);
+                        parentTermSetItem.Context.ExecuteQuery();
+
+                        Label label = labels.FirstOrDefault(currentLabel => currentLabel.Value == labelValue);
+                        if (label == null || label.ServerObjectIsNull.Value)
                         {
-                            label.SetAsDefaultForLanguage();
+                            term.CreateLabel(labelValue, lcid, isDefault);
                             parentTermSetItem.Context.ExecuteQuery();
+                        }
+                        else
+                        {
+                            if (isDefault && !label.IsDefaultForLanguage)
+                            {
+                                label.SetAsDefaultForLanguage();
+                                parentTermSetItem.Context.ExecuteQuery();
+                            }
                         }
                     }
                 }
-            }
-            parentTermSetItem.TermStore.CommitAll();
-            _ctx.ExecuteQuery();
+                parentTermSetItem.TermStore.CommitAll();
+                _ctx.ExecuteQuery();
 
-            XmlNodeList termsNodes = termElement.SelectNodes("./Terms/Term");
-            if (termsNodes != null && termsNodes.Count > 0)
-            {
-                foreach (XmlElement childTermElement in termsNodes)
+                XmlNodeList termsNodes = termElement.SelectNodes("./Terms/Term");
+                if (termsNodes != null && termsNodes.Count > 0)
                 {
-                    Import(childTermElement, term);
+                    foreach (XmlElement childTermElement in termsNodes)
+                    {
+                        Import(childTermElement, term);
+                    }
                 }
             }
+
+           
         }
 
         private void LoadWorkingLanguage(TermStore termStore)
