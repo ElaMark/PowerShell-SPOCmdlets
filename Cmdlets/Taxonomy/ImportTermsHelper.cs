@@ -5,6 +5,7 @@ using System.Text;
 using System.Xml;
 using Microsoft.SharePoint.Client;
 using Microsoft.SharePoint.Client.Taxonomy;
+using Microsoft.SharePoint.Client.Publishing.Navigation;
 
 namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
 {
@@ -13,6 +14,7 @@ namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
         private XmlDocument _xml;
         private ClientContext _ctx;
         private BaseSPOCmdlet _cmdlet = null;
+        private Guid _LocalNavTermSetId;  //Feature 152
         private int _workingLanguage = 0;
 
         public ImportTermsHelper(BaseSPOCmdlet cmdlet, ClientContext ctx, XmlDocument xml)
@@ -22,6 +24,25 @@ namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
             _xml = xml;
             if (xml.DocumentElement == null)
                 throw new Exception("The XML provided does not include a root element.");
+        }
+
+        //Added for Feature 152
+        public void SetManagedNavigationOn(Guid termSetID)
+        {
+            TaxonomySession ts = TaxonomySession.GetTaxonomySession(_ctx);
+            var tsc = ts.TermStores;
+
+            _ctx.Load(tsc);
+            _ctx.ExecuteQuery();
+
+            WebNavigationSettings navSettings = new WebNavigationSettings(_ctx, _ctx.Web);
+            navSettings.GlobalNavigation.Source = StandardNavigationSource.TaxonomyProvider;
+            navSettings.GlobalNavigation.TermStoreId = tsc[0].Id; 
+            navSettings.GlobalNavigation.TermSetId = termSetID;
+            navSettings.Update(ts);
+
+            _ctx.Load(navSettings);
+            _ctx.ExecuteQuery();
         }
 
         public void Import()
@@ -131,6 +152,8 @@ namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
             }
             parentGroup.TermStore.CommitAll();
             parentGroup.Context.ExecuteQuery();
+
+            SetManagedNavigationOn(_LocalNavTermSetId);
         }
 
         public void Import(TermSet parentTermSet)
@@ -319,6 +342,8 @@ namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
                     }
                 }
             }
+
+            _LocalNavTermSetId = termSet.Id; //Feature 152
         }
 
         private void Import(XmlElement termElement, TermSetItem parentTermSetItem)
@@ -334,7 +359,7 @@ namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
                 {
                     term = parentTermSetItem.Terms.GetByName(termName);
                     _ctx.Load(term);
-                }
+                 }
                 using (scope.StartCatch())
                 {
                 }
@@ -399,6 +424,8 @@ namespace Lapointe.SharePointOnline.PowerShell.Cmdlets.Taxonomy
                     if (!string.IsNullOrEmpty(termElement.GetAttribute("Id")))
                         id = new Guid(termElement.GetAttribute("Id"));
                     term = parentTermSetItem.CreateTerm(termName, lcid, id);
+
+                    _LocalNavTermSetId = id; //Feature 152
 
                     if (!string.IsNullOrEmpty(termElement.GetAttribute("CustomSortOrder")))
                         term.CustomSortOrder = termElement.GetAttribute("CustomSortOrder");
